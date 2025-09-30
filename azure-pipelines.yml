@@ -1,13 +1,22 @@
+trigger:
+- main
+
+variables:
+- group: github-org-secrets
+
+pool:
+  vmImage: 'ubuntu-latest'
+
 jobs:
-- job: Build
-  displayName: 'Build and Test'
-  pool:
-    vmImage: 'ubuntu-latest'
+- job: GitHubOrganizationAnalysis
+  displayName: 'GitHub Organization Analysis and Azure DevOps Integration'
   steps:
+  
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.x'
       addToPath: true
+    displayName: 'Setup Python'
 
   - script: |
       python -m pip install --upgrade pip
@@ -15,5 +24,66 @@ jobs:
     displayName: 'Install dependencies'
 
   - script: |
-      python src/main.py
-    displayName: 'Run main script'
+      echo "Validating GitHub connection..."
+      python -c "
+      import os
+      import requests
+      token = os.environ.get('GITHUB_TOKEN')
+      if not token:
+          raise ValueError('GITHUB_TOKEN not found')
+      headers = {'Authorization': f'token {token}'}
+      response = requests.get('https://api.github.com/user', headers=headers)
+      if response.status_code == 200:
+          print('✅ GitHub authentication successful')
+      else:
+          raise Exception(f'❌ GitHub authentication failed: {response.status_code}')
+      "
+    displayName: 'Validate GitHub Authentication'
+    env:
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
+
+  - script: |
+      echo "Validating Azure DevOps connection..."
+      python -c "
+      import os
+      import requests
+      import base64
+      token = os.environ.get('AZURE_DEVOPS_TOKEN')
+      org = os.environ.get('AZURE_DEVOPS_ORG')
+      if not token or not org:
+          raise ValueError('AZURE_DEVOPS_TOKEN or AZURE_DEVOPS_ORG not found')
+      auth = base64.b64encode(f':{token}'.encode()).decode()
+      headers = {'Authorization': f'Basic {auth}'}
+      response = requests.get(f'https://dev.azure.com/{org}/_apis/projects', headers=headers)
+      if response.status_code == 200:
+          print('✅ Azure DevOps authentication successful')
+      else:
+          raise Exception(f'❌ Azure DevOps authentication failed: {response.status_code}')
+      "
+    displayName: 'Validate Azure DevOps Authentication'
+    env:
+      AZURE_DEVOPS_TOKEN: $(AZURE_DEVOPS_TOKEN)
+      AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
+
+  - script: |
+      python src/main.py --org $(GITHUB_ORG) --azure-project $(AZURE_DEVOPS_PROJECT)
+    displayName: 'Run GitHub Organization Analysis'
+    env:
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
+      AZURE_DEVOPS_TOKEN: $(AZURE_DEVOPS_TOKEN)
+      AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
+
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: '**/*test-results.xml'
+      failTaskOnFailedTests: false
+    displayName: 'Publish Test Results'
+    condition: succeededOrFailed()
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: 'output/'
+      artifact: 'github-org-analysis-results'
+    displayName: 'Publish Analysis Results'
+    condition: succeededOrFailed()
