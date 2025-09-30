@@ -1,8 +1,12 @@
-# Azure GitHub Organization Checker
+# Azure-Devops-Scripts
+
+A collection of Azure DevOps utilities and automation scripts.
+
+## Azure GitHub Organization Checker
 
 This project is designed to interact with GitHub and Azure DevOps APIs to check all repositories in a specified GitHub organization. It gathers repository details, including size, and manages team and user lists in Azure DevOps.
 
-## Project Structure
+### Project Structure
 
 ```
 azure-github-org-checker
@@ -19,12 +23,12 @@ azure-github-org-checker
 └── azure-pipelines.yml       # Azure DevOps pipeline configuration
 ```
 
-## Setup Instructions
+### Setup Instructions
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/your-username/azure-github-org-checker.git
-   cd azure-github-org-checker
+   git clone https://github.com/Prathyushanuthi-hub/Azure-Devops-Scripts.git
+   cd Azure-Devops-Scripts/azure-github-org-checker
    ```
 
 2. **Install Dependencies**
@@ -41,14 +45,14 @@ azure-github-org-checker
 3. **Configuration**
    Ensure you have the necessary API tokens for GitHub and Azure DevOps. You may need to set these as environment variables or configure them in a separate configuration file.
 
-## Usage
+### Usage
 
 To run the application, execute the following command:
 ```bash
 python src/main.py
 ```
 
-## Functionality
+### Functionality
 
 - **Check Repositories**: The application lists all repositories in the specified GitHub organization and retrieves their details, including size.
 - **Manage Teams and Users**: It adds repositories to specified teams and user lists in Azure DevOps.
