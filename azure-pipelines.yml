@@ -4,86 +4,100 @@ trigger:
 variables:
 - group: github-org-secrets
 
-pool:
-  vmImage: 'ubuntu-latest'
+# Remove pool specification to avoid parallelism issues
+# This will use whatever agent is available without requesting specific parallelism
 
-jobs:
-- job: GitHubOrganizationAnalysis
-  displayName: 'GitHub Organization Analysis and Azure DevOps Integration'
-  steps:
-  
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.x'
-      addToPath: true
-    displayName: 'Setup Python'
+stages:
+- stage: GitHubAnalysis
+  displayName: 'GitHub Organization Analysis'
+  jobs:
+  - job: Setup
+    displayName: 'Setup and Validation'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+        addToPath: true
+      displayName: 'Setup Python'
 
-  - script: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
-    displayName: 'Install dependencies'
+    - script: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+      displayName: 'Install dependencies'
 
-  - script: |
-      echo "Validating GitHub connection..."
-      python -c "
-      import os
-      import requests
-      token = os.environ.get('GITHUB_TOKEN')
-      if not token:
-          raise ValueError('GITHUB_TOKEN not found')
-      headers = {'Authorization': f'token {token}'}
-      response = requests.get('https://api.github.com/user', headers=headers)
-      if response.status_code == 200:
-          print('✅ GitHub authentication successful')
-      else:
-          raise Exception(f'❌ GitHub authentication failed: {response.status_code}')
-      "
-    displayName: 'Validate GitHub Authentication'
-    env:
-      GITHUB_TOKEN: $(GITHUB_TOKEN)
+    - script: |
+        echo "Validating GitHub connection..."
+        python -c "
+        import os
+        import requests
+        token = os.environ.get('GITHUB_TOKEN')
+        if not token:
+            print('❌ GITHUB_TOKEN not found')
+            exit(1)
+        headers = {'Authorization': f'token {token}'}
+        response = requests.get('https://api.github.com/user', headers=headers)
+        if response.status_code == 200:
+            print('✅ GitHub authentication successful')
+            user = response.json()
+            print(f'Authenticated as: {user.get(\"login\", \"Unknown\")}')
+        else:
+            print(f'❌ GitHub authentication failed: {response.status_code}')
+            print(f'Response: {response.text}')
+            exit(1)
+        "
+      displayName: 'Validate GitHub Authentication'
+      env:
+        GITHUB_TOKEN: $(GITHUB_TOKEN)
 
-  - script: |
-      echo "Validating Azure DevOps connection..."
-      python -c "
-      import os
-      import requests
-      import base64
-      token = os.environ.get('AZURE_DEVOPS_TOKEN')
-      org = os.environ.get('AZURE_DEVOPS_ORG')
-      if not token or not org:
-          raise ValueError('AZURE_DEVOPS_TOKEN or AZURE_DEVOPS_ORG not found')
-      auth = base64.b64encode(f':{token}'.encode()).decode()
-      headers = {'Authorization': f'Basic {auth}'}
-      response = requests.get(f'https://dev.azure.com/{org}/_apis/projects', headers=headers)
-      if response.status_code == 200:
-          print('✅ Azure DevOps authentication successful')
-      else:
-          raise Exception(f'❌ Azure DevOps authentication failed: {response.status_code}')
-      "
-    displayName: 'Validate Azure DevOps Authentication'
-    env:
-      AZURE_DEVOPS_TOKEN: $(AZURE_DEVOPS_TOKEN)
-      AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
+    - script: |
+        echo "Validating Azure DevOps connection..."
+        python -c "
+        import os
+        import requests
+        import base64
+        token = os.environ.get('AZURE_DEVOPS_TOKEN')
+        org = os.environ.get('AZURE_DEVOPS_ORG')
+        if not token or not org:
+            print('❌ AZURE_DEVOPS_TOKEN or AZURE_DEVOPS_ORG not found')
+            exit(1)
+        auth = base64.b64encode(f':{token}'.encode()).decode()
+        headers = {'Authorization': f'Basic {auth}'}
+        response = requests.get(f'https://dev.azure.com/{org}/_apis/projects?api-version=6.0', headers=headers)
+        if response.status_code == 200:
+            print('✅ Azure DevOps authentication successful')
+            projects = response.json().get('value', [])
+            print(f'Found {len(projects)} projects')
+        else:
+            print(f'❌ Azure DevOps authentication failed: {response.status_code}')
+            print(f'Response: {response.text}')
+            exit(1)
+        "
+      displayName: 'Validate Azure DevOps Authentication'
+      env:
+        AZURE_DEVOPS_TOKEN: $(AZURE_DEVOPS_TOKEN)
+        AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
 
-  - script: |
-      python src/main.py --org $(GITHUB_ORG) --azure-project $(AZURE_DEVOPS_PROJECT)
-    displayName: 'Run GitHub Organization Analysis'
-    env:
-      GITHUB_TOKEN: $(GITHUB_TOKEN)
-      AZURE_DEVOPS_TOKEN: $(AZURE_DEVOPS_TOKEN)
-      AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
+    - script: |
+        echo "Running GitHub Organization Analysis..."
+        echo "Organization: $(GITHUB_ORG)"
+        echo "Azure DevOps Project: $(AZURE_DEVOPS_PROJECT)"
+        
+        # Create output directory
+        mkdir -p output
+        
+        # Run the analysis
+        python src/main.py --org "$(GITHUB_ORG)" --azure-project "$(AZURE_DEVOPS_PROJECT)"
+      displayName: 'Run GitHub Organization Analysis'
+      env:
+        GITHUB_TOKEN: $(GITHUB_TOKEN)
+        AZURE_DEVOPS_TOKEN: $(AZURE_DEVOPS_TOKEN)
+        AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
 
-  - task: PublishTestResults@2
-    inputs:
-      testResultsFormat: 'JUnit'
-      testResultsFiles: '**/*test-results.xml'
-      failTaskOnFailedTests: false
-    displayName: 'Publish Test Results'
-    condition: succeededOrFailed()
-
-  - task: PublishPipelineArtifact@1
-    inputs:
-      targetPath: 'output/'
-      artifact: 'github-org-analysis-results'
-    displayName: 'Publish Analysis Results'
-    condition: succeededOrFailed()
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: 'output/'
+        artifact: 'github-org-analysis-results'
+      displayName: 'Publish Analysis Results'
+      condition: succeededOrFailed()
