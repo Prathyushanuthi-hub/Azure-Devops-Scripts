@@ -1,0 +1,36 @@
+trigger: none  # Manual trigger only for testing
+
+variables:
+- group: github-org-secrets
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+- job: TestVariableGroup
+  displayName: 'Test Variable Group Connection'
+  steps:
+  
+  - script: |
+      echo "Testing Variable Group Access..."
+      echo "GitHub Org: $(GITHUB_ORG)"
+      echo "Azure DevOps Org: $(AZURE_DEVOPS_ORG)"  
+      echo "Azure DevOps Project: $(AZURE_DEVOPS_PROJECT)"
+      
+      # Test if secret variables are available (don't print values)
+      if [ -z "$(GITHUB_TOKEN)" ]; then
+        echo "❌ GITHUB_TOKEN not found"
+        exit 1
+      else
+        echo "✅ GITHUB_TOKEN is available"
+      fi
+      
+      if [ -z "$(AZURE_DEVOPS_TOKEN)" ]; then
+        echo "❌ AZURE_DEVOPS_TOKEN not found"
+        exit 1
+      else
+        echo "✅ AZURE_DEVOPS_TOKEN is available"
+      fi
+      
+      echo "✅ All Variable Group variables are accessible!"
+    displayName: 'Test Variable Group Access'
